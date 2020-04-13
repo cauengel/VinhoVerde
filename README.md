@@ -1,8 +1,8 @@
 # VinhoVerde
 
 ## a. Como foi a definição da sua estratégia de modelagem?
-Eu decidi por uma abordagem a partir de técnicas de regressão, ao invés de uma classificação de 11 classes (0 à 10) como estratégia para esse problema de aprendizagem supervisionada.
-Também decidi coma estratégia a divisão do problema em 2 partes distintas (um subset para vinhos brancos e um subset para vinhos tintos), a partir dos resultados obtidos pelos dados do EDA (análise exploratória) realizado e da aplicação de testes de hipótese T (teste para média) que embasaram essa subdivisão.
+#### Eu decidi por uma abordagem a partir de técnicas de regressão, ao invés de uma classificação de 11 classes (0 à 10) como estratégia para esse problema de aprendizagem supervisionada.
+#### Também decidi como estratégia a divisão do problema em 2 partes distintas (um subset para vinhos brancos e um subset para vinhos tintos), a partir dos resultados obtidos pelos dados do EDA (análise exploratória) realizado e da aplicação de testes de hipótese T (teste para média) que embasaram essa subdivisão.
 ## b. Como foi definida a função de custo utilizada?
 A função de custo utilizada foi a RMSE (root-mean-square error), pois ela é uma das principais métricas utilizas para modelos de regressão e é consonante com a abordagem proposta.
 ## c. Qual foi o critério utilizado na seleção do modelo final?
