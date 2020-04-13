@@ -1,0 +1,1265 @@
+
+
+
+---
+title: "Wine Quality"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r package_install, message=FALSE, echo=FALSE, results='hide', warning=FALSE}
+
+# Função check.packages: instala vários pacotes do R
+# Verifica se os pacotes estão instalados e instala os que não estiverem
+check.packages <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+}
+
+# Seleciona os pacotes desejados
+packages <- c("psych", 
+              "plotly", 
+              "gmodels", 
+              "corrgram",
+              "dplyr",
+              "psych",
+              "factoextra",
+              "lattice",
+              "latticeExtra",
+              "asbio",
+              "car",
+              "rpart",
+              "rpart.plot",
+              "MASS",
+              "randomForest",
+              "caret")
+
+
+
+
+# Chama a função com os pacotes desejadas
+check.packages(packages)
+
+
+library("psych")
+library("plotly")
+library("gmodels")
+library("corrgram")
+library("dplyr")
+library("psych")
+
+# mostrar até 2 casas decimais
+options("scipen" = 2)
+```
+
+#Reconhecimento da base
+
+<br><br>
+
+#### Verificação das amostras e variáveis
+
+```{r, echo=FALSE}
+# Ler arquivo csv
+Vinhos <- read.csv2("winequality.csv", sep=";")
+
+#converter para valores numéricos
+Vinhos[,-1] <- suppressWarnings(data.frame(lapply(Vinhos[,-1], function(x) as.numeric(as.character(x)))))
+
+#mostrar as variáveis e alguns valores
+str(Vinhos)
+```
+
+A base possui 6497 amostras com as seguintes variáveis:
+
+1. Tipo: do vinho: tinto (RED) ou branco (WHITE)
+
+2. Fixed Acidity: Acidez contida no vinho
+
+3. Volatile Acidity: Quantidade de ácido acético no vinho, valores altos podem levar o vinho a ter sabor desagradável de vinagre
+
+4. Citric Acid: Encontrado em pouca quantidade, o ácido cítrico pode adicionar frescor e sabor ao vinho.
+
+5. Residual Sugar: Quantidade de açucar restante após o término da fermentação. É raro encontrar vinhos com menos de 1 g/l e vinhos com valores maiores que 45 g/l são considerardos doces.
+
+6. Chlorides: Quantidade de sal no vinho
+
+7. Free Sulfur Dioxide: A forma livre de SO2 (dióxido de enxofre) existe em equilibrio entre SO2 molecular (como um gás dissolvido) e ions bissulfito. Evita o crescimento de micróbios e oxidação do vinho.
+
+8. Total Sulfur Dioxide: Total de SO2 livres ou ligados. Em baixa concentração, o SO2 é praticamente imperceptível no vinho, mas em concentrações acima de 50 ppm, o dióxido de enxofre torna-se evidente no aroma e sabor do vinho
+
+9. Density: A densidade do vinho depende do percentual de álcool e açúcar.
+
+10. pH: Descreve se o vinho é básico (14) ou ácido (0). A maioria dos vinhos possuem pH entre 3 e 4
+
+11. Sulphates: Aditivo que pode contribuir com os níveis de SO2, que age contra micróbios e oxidação
+
+12. Alcohol: O percentual de álcool no vinho
+
+13. Quality: Qualidade do vinho com pontuação de 0 a 10, sendo 10 muito bom e 0 de péssima qualidade. Trata-se da variável target.
+
+<br><br>
+
+#### Resumo dos dados
+
+```{r, message=FALSE, echo=FALSE}
+attach(Vinhos)
+
+summary(Vinhos)
+```
+
+Analisando o resumo, nota-se potenciais outliers dados que os valores mínimos e máximos estão muito distantes dos quartis para as seguintes variáveis: fixedacidity, volatileacidity, citricacid, residualsugar, chlorides, freesulfurdioxide, totalsulfurdioxide, density e sulphates.
+
+Além disso, há valores muito discrepantes:
+
+* Citric Acid com valor mínimo 0
+
+* Total Sulfur Dioxide com valor mínimo 6
+
+* Density com valor máximo 103.8980
+
+Também é observado 40 registros com valores nulos(NA) para a variável alcohol, haja visto que os mesmos não foram passíveis de leitura após a conversão para numérico devido a apresentarem valores esdrúxulos como '100333333333333'.
+Face a pequena quantidade de linhas e a impossibilidade de realizar a conversão dos valores com precisão, os registros serão eliminados.
+
+```{r}
+#eliminar registros com valores nulos
+Vinhos <- na.omit(Vinhos)
+
+summary(Vinhos)
+```
+
+
+
+<br><br>
+
+#### Frequencia Absoluta
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+table(as.factor(Vinhos$quality), Vinhos$type, useNA = "ifany")
+
+plot_ly (
+  as.data.frame.matrix ( table(as.factor(Vinhos$quality), Vinhos$type) ), 
+  x = c(3:9), y= ~Red, type = 'bar', name='Tinto') %>%
+  add_trace(y= ~White, name='Branco') %>%
+  layout(barmode = 'group')
+```
+
+Analisando a quantidade de vinhos por tipo e por qualidade, há mais vinhos do tipo branco do que tinto no data set. Também nota-se que ambos os vinhos seguem uma tendência normal com relação à qualidade.
+
+<br><br>
+
+#### Valores estatisticos relevantes para o vinho tinto
+
+```{r rows.print=14, echo=FALSE}
+
+library(dplyr)
+
+describe(Vinhos %>% filter(type=="Red")) %>% 
+  select("Mínima"=min, "Máxima"=max, "Média"=mean, "Desvio Padrão"=sd, "Mediana"=median) -> estatTinto
+estatTinto
+```
+
+
+#### Valores estatisticos relevantes para o vinho branco
+
+```{r rows.print=14, echo=FALSE}
+library(dplyr)
+
+describe(Vinhos %>% filter(type=="White")) %>% select("Mínima"=min, "Máxima"=max, "Média"=mean, "Desvio Padrão"=sd, "Mediana"=median) -> estatBranco
+estatBranco
+```
+
+
+#### Razão entre as estatísticas do vinho tinto para o vinho branco
+
+```{r rows.print=14, echo=FALSE}
+    estatRazao <- estatTinto / estatBranco
+    estatRazao
+```
+
+Comparando-se os atributos dos vinhos tintos com os vinhos brancos de forma tabular através da observação dos parâmetros de máximo, mínimo, média, desvio padrão e mediana da amostra. Temos: 
+
+* Quase todos os atributos dos vinhos tem distribuição bem diferentes.
+* Alguns poucos são semelhantes, pode-se citar: pH e quality
+* Outros são muito desiguais: residualsugar,freesulfurdioxide,totalsulfurdioxide
+
+Antes de qualquer conclusão, deve-se tratar as questões do outliers que podem estar influenciando esta amostra. 
+
+<br><br>
+
+
+#### Remoção de valores zerados 
+
+Pelos resultados observados de forma tabular, temos que apenas o atributo <b>citricacid</b> possui valores zerados.
+
+Abaixo são listados as amostras com ácido cítrico zerado:
+
+```{r, echo=FALSE}
+#seleciona os vinhos com citricacid zerado 
+vinhosComZero <- which(Vinhos$citric.acid == 0)
+print(vinhosComZero)
+```
+
+
+Conforme pesquisado na Internet, sabemos que o valor do ácido cítrico deve variar entre 0.1 e 1. 
+Deste modo, muito provavelmente, o valor zerado deve ocorrer por imprecisão dos aparelhos de medição da concentração de ácido cítrico. Fazemos a sua substituição pelo valor mínimo (0.1)
+
+
+```{r}
+#Vamos trocá-los por 0.1 que é o valor mais provável 
+Vinhos[vinhosComZero,"citric.acid"] <- 0.1
+```
+
+<br><br>
+
+
+#### Boxplot das variáveis para visualização de outliers
+
+```{r message=FALSE, echo=FALSE}
+attach(Vinhos)
+boxplot(fixed.acidity ~ type, main='fixedacidity',col=c('red','blue'))
+boxplot(volatile.acidity ~ type , main='volatileacidity')
+boxplot(citric.acid ~ type, main='citricacid')
+boxplot(residual.sugar ~ type, main='residualsugar',col=c('red','blue'))
+boxplot(chlorides ~ type, main='chlorides')
+boxplot(free.sulfur.dioxide ~ type, main='freesulfurdioxide')
+boxplot(total.sulfur.dioxide ~ type, main='totalsulfurdioxide')
+boxplot(density ~ type, main='density')
+boxplot(pH ~ type, main='pH')
+boxplot(sulphates ~ type, main='sulphates')
+boxplot(alcohol ~ type, main='alcohol')
+```
+
+
+Quando realizamos a quebra pelo tipo de vinho em boxplotes, percebemos as seguintes características:  
+
+* fixedacidity - O vinho tinto possui potenciais outliers apenas acima da barreira enquanto o branco possui acima e abaixo das barreiras
+
+* citricacid - Há mais potenciais outliers para vinho branco e eles aparecem tanto acima como abaixo das barreiras 
+
+* residual sugar - Para vinho tinto há mais potenciais outliers. Para vinho branco há menos, mas ficam mais distantes da barreira superior
+
+* freesulfurdioxide - Há mais potenciais outliers para o vinho branco e se localizam mais distantes da barreira superior.
+
+* totalsufurdioxide - Há potenciais outliers tanto abaixo como acima das barreira para vinhos brancos, para tinto apenas acima e mais próximos 
+
+* density - Para tinto há um número maior de potenciais outliers, tanto abaixo como acima das barreiras, para branco há poucos e alguns bem distantes 
+* sulphates - Para tinto há mais potenciais outliers e mais distantes da barreira superior
+
+* alcohol - Há potenciais outliers acima e abaixo das barreiras apenas para vinhos tintos.  
+
+<br><br>
+
+
+#### Histograma dos atributos por tipo de vinho
+
+```{r fig.width=8, fig.height=5,echo=FALSE}
+
+VinhosBrancos <- subset(Vinhos,type == "White")
+VinhosTintos  <- subset(Vinhos,type == "Red")
+
+
+atributos_numericos <- c("fixed.acidity","volatile.acidity","citric.acid","residual.sugar","chlorides",
+                         "free.sulfur.dioxide","total.sulfur.dioxide","density","pH","sulphates","alcohol","quality")
+
+
+par(mfrow=c(3,2))
+par(mar=c(2,2,3,3))
+
+for (atr in atributos_numericos){
+    
+    hist(VinhosBrancos[,atr],main=paste0("Vinhos Brancos - Atributo ",atr))
+    
+    hist(VinhosTintos[,atr],main=paste0("Vinhos Tintos - Atributo ",atr))
+}
+
+
+```
+
+
+Dividiu-se a amostra entre Vinhos Tintos e Vinhos Brancos 
+
+A partir dessa divisão, traçaram-se lado a lado os histogramas dessa subdivisão e percebe-se que o histograma é bem 
+diferente para cada atributo e cada tipo de vinho (tinto e branco)
+
+A percepção visual será complementada com os testes T das médias dos atributos numéricos para a comprovação das diferenças.
+
+<br><br>
+
+#### Teste de hipótese para cada atributo entre os dois tipos de vinho
+
+```{r, echo=FALSE}
+for (atr in atributos_numericos){
+  result <- t.test(VinhosTintos[,atr],VinhosBrancos[,atr])
+  print(paste0("Teste de igualdade das médias entre tintos e brancos para o atributo ",atr))
+  print(result)
+  
+}
+```
+
+
+Realizados os testes T para as amostras separadas de vinhos tintos e brancos, observam-se os fatos descritos abaixo:
+
+* Para cada atributo numérico dos vinhos brancos e tintos realizou-se um teste T
+* Os testes foram parametrizados com um nível de confiança de 95%
+* O p-value de cada um dos testes apresentou valores substancialmente menores que 5%.
+
+Deste modo, para o modelo preditivo a ser desenvolvido, a partir deste ponto, iremos separar a amostras entre os
+dois tipos de vinho (tinto,branco) e prosseguiremos na criação do modelo preditivo da qualidade apenas para os vinhos brancos, sendo que um trabalho completo sobre o assunto implicaria em replicar o trabalho contido abaixo para as 
+amostras com vinhos tintos. 
+
+A amostra com vinhos brancos possui agora 4.898 elementos
+
+<br><br>
+
+
+#### Tratatamento dos outliers
+```{r, echo=FALSE}
+
+#Selecionar e imprimir potenciais outliers, supondo uma distribuição normal.
+#Nesse caso, uma informação é classificada como outlier quando é superior a 1.5 vezes o intervalo interquartilíco além
+#do 3o. quartil ou inferior a 1.5 vezes o intervalor interquartilíco abaixo do 1 quartil 
+for (atributo in atributos_numericos){
+  outliers <- boxplot.stats(VinhosBrancos[,atributo])$out
+  if (length(outliers) > 0 ){
+    print(paste0("Potenciais outliers referentes ao atributo ",atributo))
+    print(paste0("Quantidade de potenciais outliers ",length(outliers)))
+    print("")
+    print(outliers)
+    print("")
+  }
+  
+}
+
+```
+
+
+Há valores potenciais de outliers em quase todos os atributos dos vinhos brancos, exceto na concentração de alchool 
+que não apresenta outliers 
+
+Para verificar se os valores são realmente outliers, sabendo-se que os vinhos são portugueses, 
+utilizou-se os valores de referência do Instituto da Vinha e do Vinho de Portugal, com as informações presentes no link 
+a seguir: http://www.ivv.gov.pt/np4/89/
+
+* Acidez Total >= 3.5 g/L
+* Acidez Volátil <= 500 mg/L
+* Ácido Cítrico <= 1 g/L
+* 1 g/L <= Açúcar Residual <= 32 g/L
+* Cloretos <= 1 g/L
+* Total Dióxiodo de Enxofre <= 250 mg/L
+
+<br><br>
+
+
+####Extração dos outliers 
+
+```{r, echo=FALSE}
+
+outAcidezTotal <- which(VinhosBrancos$fixedacidity < 3.5)
+outAcidezVolatil <- which(VinhosBrancos$volatileacidity > 0.5)
+outAcidoCitrico <- which(VinhosBrancos$citricacid > 1.0)
+outAcucar1 <- which(VinhosBrancos$residualsugar > 32)
+outAcucar2 <- which(VinhosBrancos$residualsugar < 1)
+outCloreto <- which(VinhosBrancos$chlorides > 1)
+outTotalSO2 <- which(VinhosBrancos$totalsulfurdioxide > 250)
+
+outVinhoBranco <- unique(c(outAcidezTotal,outAcidezVolatil,outAcidoCitrico,
+                           outAcucar1,outAcucar2,outCloreto,outTotalSO2))
+
+
+hist(VinhosBrancos[outVinhoBranco,"quality"],main="Qualidade dos vinhos brancos considerados como outliers ")
+print("Sumário da qualidade dos vinhos Brancos considerados como outliers ")
+summary(VinhosBrancos[outVinhoBranco,"quality"])
+
+VinhosBrancosSemOut <- VinhosBrancos[-outVinhoBranco,]
+hist(VinhosBrancosSemOut[,"quality"],main="Qualidade dos vinhos brancos sem outliers ")
+
+
+print("Sumário da qualidade dos vinhos Brancos sem outliers")
+summary(VinhosBrancosSemOut[,"quality"])
+
+print("Teste T para a média de qualidade entre os vinhos brancos sem outliers e a amostra completa")
+print(t.test(VinhosBrancos$quality,VinhosBrancosSemOut$quality))
+
+print("Quantidade de vinhos a serem excluídos como outliers :")
+print(length(outVinhoBranco))
+
+VinhosBrancos <- VinhosBrancosSemOut
+
+```
+
+
+Os vinhos brancos selecionados como outliers não possuíam uma distribuição especial em relação à qualidade e não afetavam a média da qualidade dos vinhos.
+Deste modo, realizou-se um teste T entre os vinhos brancos sem os outliers e a amostra completa, com 95% de confiança e falhou (p-value = 7,5%). Portanto as amostra possuem médias iguais.
+Por fim, os outliers foram retirados da amostra e do modelo a ser utilizado para predição. 
+
+Serão retirados 250 vinhos classificados como outliers, o que corresponde a 5,1% das 
+amostras de vinhos brancos. 
+
+Quantidade de vinhos brancos após a retirada dos outliers: 4.648 elementos
+
+<br><br>
+
+
+#### Análise de Correlação das variáveis
+
+```{r fig.width=13, fig.height=5,echo=FALSE}
+#Calcula a matriz de correlações
+
+VinhosBrancosNum <- VinhosBrancos[,atributos_numericos]
+matcor <- cor(VinhosBrancosNum)
+print(matcor, digits = 2)
+
+
+#Exibe-se gráfico ilustrando visualmente o grau de correlação entre as características dos vinhos brancos 
+library(corrgram)
+corrgram(matcor, type = "cor", lower.panel = panel.shade, upper.panel = panel.pie)
+
+
+```
+
+
+```{r fig.width=16, fig.height=12,echo=FALSE}
+
+panel.cor <- function(x, y, digits=2, prefix ="", cex.cor,
+                      ...)  {
+  usr <- par("usr")
+  on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- cor(x, y , use = "pairwise.complete.obs")
+  txt <- format(c(r, 0.123456789), digits = digits) [1]
+  txt <- paste(prefix, txt, sep = "")
+  if (missing(cex.cor))
+    cex <- 0.8/strwidth(txt)
+  # abs(r) é para que na saída as correlações ficam proporcionais
+  text(0.5, 0.5, txt, cex = cex * abs(r))
+}
+
+par(mar=c(1,1,1,1))
+pairs(VinhosBrancosNum, lower.panel=panel.smooth, upper.panel=panel.cor)
+
+
+```
+
+
+Pelos gráficos acima, percebe-se: 
+
+* Alta correlação positiva entre a densidade e a concentração residual de açúcar
+* Alta correlação positiva entre Total de SO2 e a taxa de SO2 livre 
+* Alta correlação negativa entre o volume de alcool e a densidade 
+* Correlação entre a densidade e o Total de SO2
+* Correlação negativa entre o álcool e a concentração residual de açúcar
+* Correlação entre a qualidade e o álcool
+
+<br><br>
+
+#### Verificando a correlação
+
+Gráfico de dispersão do vinho branco entre a densidade e o açucar residual
+
+```{r message=FALSE, warning=FALSE,  echo=FALSE}
+# Gráfico de dispersão ( pch=caracter, lwd=largura)
+attach(VinhosBrancos)
+#Gráfico de dispersão entre residualsugar e density 
+plot(residualsugar~density,pch=1,lwd=3)
+abline(h=mean(residualsugar), col="red")
+abline(v=mean(density), col="green")
+```
+
+
+Pelo gráfico, pode-se notar uma tendência linear entre as duas variáveis pelo formato do gráfico.
+Neste, pode-se perceber que, normalmente, quanto maior a densidade, maior a quantidade de açucar residual
+<br><br>
+
+
+```{r, echo=FALSE}
+
+plot(quality~residualsugar,data=VinhosBrancos,main="qualidade x açucar residual para vinhos brancos")
+```
+
+
+Aqui traçou-se um gráfico para a quantidade residual de açúcar x qualidade para os vinhos brancos já sem os outliers. 
+Percebe-se que os vinhos brancos de maior qualidade possuem uma concentração de açúcar menor que 20 g/L
+<br><br>
+
+#### Aplicando componentes principais
+
+```{r fig.width=12, fig.height=7, message=FALSE, warning=FALSE, rows.print=12, echo=FALSE}
+library("factoextra")
+
+# Cricao de sub set dos vinhos brancos sem a variavel qualidade
+VinhosBrancosSemQuality <- subset(VinhosBrancosNum, select=c(-quality))
+
+#Padroniza os dados dos vinhos brancos que foram selecionados 
+dados_padronizados = as.data.frame(scale(VinhosBrancosSemQuality))
+
+
+# componentes principais utilizando todas as variaveis
+pca1 <- prcomp(VinhosBrancosNum, scale=TRUE)
+print("Variância acumulada para cada componente ")
+print(get_eig(pca1))
+
+print("Percentual que cada componente contribui para explicar a variância ")
+fviz_eig(pca1)
+
+
+```
+
+
+Analisando-se o PCA do modelo completo sobre vinhos brancos, percebe-se: 
+
+* Não há um componente que sozinho contribua com mais do que 29% da variância 
+* Para conter mais do que 80% da variância há a necessidade de ao menos 7 componentes, o que implicaria em existir ao menos 7 componentes
+
+<br><br>
+
+Verificando os auto-vetores do primeiro de segundo componentes do PCA
+
+
+```{r  fig.width=16, fig.height=12, echo=FALSE}
+
+#Contribuicao de cada atributo para o PCA 
+#Atributos com correlação positiva aponta para o mesmo lugar no gráfico
+#Aqueles com correlação negativa, para o lado oposto no diagrama
+fviz_pca_var(pca1,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+```
+
+
+Pelo gráfico de contribuição dos atributos em relação ao PCA, temos:
+
+* Percebe-se grupos com contribuições no mesmo quadrante e outros no oposto para cada um dos quadrantes
+* fixedacidity,citricacid,chlorides,volatileacidity contribuem no mesmo sentido. Havendo melhor alinhamento entre fixedacidity e citricacid.
+* residualsugar,density,totalsulfurdioxide,freesulfurdioxide,sulphates estão no mesmo quadrante. Havendo maior proximidade entre residualsugar e density, entre totalsulfurdioxide e freesulfurdioxide.
+* ph,quality estão no mesmo quadrante
+* alcohol está isolado no último quadrante, no entanto, está quase alinhado com residualsugar e density. 
+* No primeiro componente há maior peso para os atributos densidade, açucar residual, SO2, SO2 livre e álcool
+* No segundo componente foi dado maior peso ao acidez fixa e pH
+
+A partir dessas proximidades entre os auto vetores, e considerando as correlações, será feita uma segunda verificação do uso do PCA nas variáveis totalsulfurdioxide,freesulfurdioxide, density,residualsugar e alcohol
+
+```{r , warning=FALSE, message=FALSE, echo=FALSE}
+library(dplyr)
+
+dados_padronizados %>% select(totalsulfurdioxide,freesulfurdioxide, density,residualsugar,alcohol) -> df 
+pca <- prcomp(df, scale=TRUE)
+print(get_eig(pca))
+
+```
+
+
+Analisando a tabela acima, nota-se que os três primeiros componentes já contribuem para mais de 92% da variancia da base.
+Mediante a constatação, criou-se três novos atributos pca1, pca2 e pca3 correspondendo ao primeiro, segundo e terceiro componentes do PCA.
+Por fim, os atributos originais foram excluídos do modelo por serem passíveis de substituição sem grandes prejuízos.
+<br><br>
+
+```{r, echo=FALSE}
+VinhosBrancosNum$pca1 = pca$x[,1]
+
+print("Histograma do Primeiro Componente")
+hist(VinhosBrancosNum$pca1)
+
+VinhosBrancosNum$pca2 = pca$x[,2]
+
+print("Histograma do Segundo Componente")
+hist(VinhosBrancosNum$pca2)
+
+VinhosBrancosNum$pca3 = pca$x[,3]
+
+print("Histograma do Terceiro Componente")
+hist(VinhosBrancosNum$pca3)
+
+
+```
+
+
+#Regressões
+
+```{r, warning=FALSE, message=FALSE , echo=FALSE}
+
+library(lattice)
+library(latticeExtra)
+library(asbio)
+library(car)
+
+#Função para obter as medidas dos modelos
+measures <- function(x) {
+  L <- list(nobs = length(fitted(x)),
+            RMSE = summary(x)$sigma,
+            R2 = summary(x)$r.squared,
+            R2adj = summary(x)$adj.r.squared)
+  unlist(L)
+}
+
+
+#funcao para verificar o modelo
+
+testa.modelo <- function(modelo=NULL,valores_observados,valores_preditos=NULL, dataset, tit_grafico=NULL,sumario=TRUE){
+    # Testa o modelo
+    #Se não há modelo utiliza os valores previamente preditos 
+    if (is.null(modelo)){
+       fit = valores_preditos
+    }
+    else {
+        #Caso haja modelo.... 
+        print("Sumário do modelo....")
+        if(sumario){
+          summary(modelo)
+        } 
+        else {
+         str(modelo)
+        }
+    
+        #Faz as predições do modelo 
+        Val_pred <- predict(modelo, newdata = dataset, interval = "prediction", level = 0.95)
+        dimensoes = length(dim(Val_pred)) 
+        
+        if (dimensoes > 1) { 
+          # intervalo de confianca - grafico para media
+          fit <- Val_pred[,1] # valores preditos
+          lower <- Val_pred[,2] # limite inferior
+          upper <- Val_pred[,3] # limite superior
+        }
+        else {
+          fit <- Val_pred
+        }
+        
+        
+    }
+  
+  
+    print("*** Estatísticas sobre o desempenho do modelo ****")
+
+    #Calcula a média do quadrado das diferenças entre os valores preditos e os observados 
+    mse <- mean((valores_observados - fit)^2)
+    print(paste0("RMSE para o modelo---> ",sqrt(mse)))
+
+    #Erro médio em relação a média dos valores observados 
+    erro_usando_media <- mean((fit - mean(valores_observados))^2)
+    print(paste0("Erro médio em relação a média para o modelo---> ",sqrt(erro_usando_media)))
+
+
+
+
+    # grafico residuo
+    if (!is.null(modelo)){ 
+        rs <- resid(modelo)
+        plot(predict(modelo), rs, xlab = "Qualidade predita",ylab = "Residuos",main=tit_grafico)
+        abline(h = 0, lty = 2)
+    }
+    
+    return (NULL)    
+    
+}
+
+
+# função resumida (sem gráfico)
+testa.modelo_res <- function(modelo=NULL,valores_observados,valores_preditos=NULL, dataset, sumario=TRUE){
+    # Testa o modelo
+    #Exibe um sumário do modelo 
+    if (is.null(modelo)){
+       fit = valores_preditos
+    }
+    else {
+        #Caso haja modelo.... 
+        print("Sumário do modelo....")
+        if(sumario){
+          summary(modelo)
+        } 
+        else {
+         str(modelo)
+        }
+    
+        #Faz as predições do modelo 
+        Val_pred <- predict(modelo, newdata = dataset, interval = "prediction", level = 0.95)
+        dimensoes = length(dim(Val_pred)) 
+        
+        if (dimensoes > 1) { 
+          # intervalo de confianca - grafico para media
+          fit <- Val_pred[,1] # valores preditos
+          lower <- Val_pred[,2] # limite inferior
+          upper <- Val_pred[,3] # limite superior
+        }
+        else {
+          fit <- Val_pred
+        }
+    }
+  
+    #Calcula a média do quadrado das diferenças entre os valores preditos e os observados 
+    mse <- mean((valores_observados - fit)^2)
+    print(paste0("RMSE para o modelo---> ",sqrt(mse)))
+    erro_usando_media <- mean((fit - mean(valores_observados))^2)
+    print(paste0("Erro médio em relação a média para o modelo---> ",sqrt(erro_usando_media)))
+    
+    return (NULL)    
+    
+}
+
+
+```
+
+
+#### Dividindo o dataset em treino e teste
+
+```{r}
+
+# Split em conjuntos de treinamento e teste
+set.seed(333)
+treinamento <- sample_frac(VinhosBrancosNum, 0.7)
+teste <- setdiff(VinhosBrancosNum, treinamento)
+
+
+# Dados sem a aplicação do PCA
+treinamento %>%
+  select(fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, totalsulfurdioxide,
+         freesulfurdioxide, density, residualsugar, alcohol, quality) -> treinamento_semPCA
+
+teste %>% 
+  select(fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, totalsulfurdioxide,
+         freesulfurdioxide, density, residualsugar, alcohol, quality) -> teste_semPCA
+
+
+# Dados com a aplicação do PCA
+treinamento %>%
+  select(fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, pca1, pca2, pca3, quality) -> treinamento_comPCA
+
+teste %>% 
+  select(fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, pca1, pca2, pca3, quality) -> teste_comPCA
+
+
+```
+
+O dataset foi dividido de modo que 70% será utilizado para treinamento dos modelos e 30% para teste.
+
+#### Regressão Linear
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# Modelo de regressão linear simples
+
+modelo0 <- lm(quality ~ . ,
+              data=treinamento_comPCA)
+
+
+
+modelo1 <- lm(quality ~ . ,
+              data=treinamento_semPCA)
+
+
+
+print("*** Estatísticas sobre o desempenho do modelo ****")
+print("> nobs = número de amostras")
+print("> RMSE = diferença média do valor predito em relação ao valor observado")
+print("> R2 = R-quadrado é uma medida da qualidade da predição")
+print("> R2adj = R-quadrado ajustado é uma outra medida da qualidade de predição")
+
+modl <- list(m1 = modelo0,m2=modelo1)
+round(t(sapply(modl, measures)), 3)
+
+
+# Modelo de regressão linear com o modelo aplicado o PCA - treinamento
+print("Modelo com regressão linear aplicada sobre o modelo com PCA - treinamento")
+result <- testa.modelo(modelo=modelo0, valores_observados=treinamento_comPCA$quality, tit_grafico = "Linear com PCA - treino")
+
+
+# Modelo de regressão linear com o modelo aplicado o PCA - teste
+print("Modelo com regressão linear aplicada sobre o modelo com PCA - teste")
+result <- testa.modelo(modelo=modelo0, dataset=teste_comPCA, valores_observados=teste_comPCA$quality, tit_grafico = "Linear com PCA - teste")
+
+
+
+# Modelo com os dados completos sem transformação via PCA - treinamento
+print("Modelo de regressão linear aplicada sobre o modelo sem PCA - treinamento")
+result <- testa.modelo(modelo=modelo1, valores_observados=treinamento_semPCA$quality, tit_grafico = "Linear Completo - treino")
+
+
+# Modelo com os dados completos sem transformação  PCA - teste
+print("Modelo de regressão linear aplicada sobre o modelo sem PCA - teste")
+result <- testa.modelo(modelo=modelo1, dataset=teste_semPCA, valores_observados=teste_semPCA$quality, tit_grafico = "Linear Completo - teste")
+
+
+##### UTILIZANDO FORWARD,BACKWARD OU BOTH 
+
+VinhosBrancosStep <- treinamento_semPCA
+
+
+modelo.base <- lm(quality ~ fixedacidity,
+              data=VinhosBrancosStep)
+
+
+
+modelo.completo <- lm(quality ~ . ,
+              data=VinhosBrancosStep)
+
+
+modelo.medio <- lm(quality ~ fixedacidity+volatileacidity+citricacid+chlorides+pH+sulphates,
+              data=VinhosBrancosStep)
+ 
+
+forward<-step(modelo.base,direction="forward")
+
+
+backward<-step(modelo.completo,direction="backward")
+
+
+stepwise<-step(modelo.medio,direction="both")
+ 
+
+print("*** Análise dos indicadores para modelos de regressão linear obtidos pelos métodos forward,backward e both ****")
+
+
+print("*** Estatísticas sobre o desempenho do modelo ****")
+print("> nobs = número de amostras")
+print("> RMSE = diferença média do valor predito em relação ao valor observado")
+print("> R2 = R-quadrado é uma medida da qualidade da predição")
+print("> R2adj = R-quadrado ajustado é uma outra medida da qualidade de predição")
+
+
+modl <- list(m1 = forward,m2=backward,m3=stepwise)
+round(t(sapply(modl, measures)), 3)
+
+
+##### TESTE DE PREDIÇÃO DOS MODELOS #######
+
+
+print("Modelo de regressão linear utilizando a estratégia forward nos vinhos brancos com todos os atributos - treinamento")
+result<-testa.modelo(modelo=forward, valores_observados=treinamento_semPCA$quality, tit_grafico="Linear com forward - treino")
+
+
+print("Modelo de regressão linear utilizando a estratégia forward nos vinhos brancos com todos os atributos - teste")
+result<-testa.modelo(modelo=forward, dataset=teste_semPCA, valores_observados=teste_semPCA$quality, tit_grafico="Linear com forward - teste")
+
+
+print("Modelo de regressão linear utilizando a estratégia backward nos vinhos brancos com todos os atributos - treinamento")
+result<-testa.modelo(modelo=backward, valores_observados=treinamento_semPCA$quality, tit_grafico = "Linear com backward - treino")
+
+print("Modelo de regressão linear utilizando a estratégia backward nos vinhos brancos com todos os atributos - teste")
+result<-testa.modelo(modelo=backward, dataset=teste_semPCA, valores_observados=teste_semPCA$quality, tit_grafico = "Linear com backward - teste")
+
+
+print("Modelo de regressão linear utilizando a estratégia both nos vinhos brancos com todos os atributos - treinamento")
+result<-testa.modelo(modelo=stepwise, valores_observados=treinamento_semPCA$quality, tit_grafico = "Linear com both - treino")
+
+print("Modelo de regressão linear utilizando a estratégia both nos vinhos brancos com todos os atributos - teste")
+result<-testa.modelo(modelo=stepwise, dataset=teste_semPCA, valores_observados=teste_semPCA$quality, tit_grafico = "Linear com both - teste")
+```
+
+#### Regressão com modelos sempre a média e sempre o máximo
+
+Abaixo serão testados modelos preditivos fixos, o resultado é sempre a média ou o valor máximo.
+
+```{r, message=FALSE}
+
+##### Testa contra os piores modelos 
+
+VinhosBrancosModelosRuins <- VinhosBrancosNum
+
+#Utiliza como 
+VinhosBrancosModelosRuins$qualidade.media <- mean(VinhosBrancosModelosRuins$quality)
+
+valores_preditos <- VinhosBrancosModelosRuins$qualidade.media
+print("Modelo Ruim -  retorna sempre a média ")
+result<-testa.modelo(modelo=NULL,valores_observados=VinhosBrancosModelosRuins$quality,
+             valores_preditos=valores_preditos,tit_grafico = "Modelo Ruim - Sempre a média")
+
+
+VinhosBrancosModelosRuins$qualidade.max <- max(VinhosBrancosModelosRuins$quality)
+valores_preditos <- VinhosBrancosModelosRuins$qualidade.max
+
+print("Modelo Ruim -  retorna sempre o máximo ")
+result<-testa.modelo(modelo=NULL,valores_observados=VinhosBrancosModelosRuins$quality,
+             valores_preditos=valores_preditos,tit_grafico = "Modelo Ruim - sempre o máximo")
+
+
+
+
+```
+
+#### Árvore de regressão
+
+```{r fig.width=22, fig.height=18,echo=FALSE, message=FALSE, warning=FALSE}
+#Árvore de Regressão com a aplicação de PCA
+library(rpart.plot)
+library(rpart)
+modelo_Valor_tree0 <- rpart (quality ~ . ,
+                            data = treinamento_comPCA, 
+                            cp = 0.001,minsplit = 5,maxdepth=10)
+# Faz o Gráfico
+rpart.plot(modelo_Valor_tree0, type=4, extra=1, under=FALSE, clip.right.labs=TRUE,
+           fallen.leaves=FALSE,   digits=2, varlen=-10, faclen=20,
+           cex=0.4, tweak=1.7,
+           compress=TRUE,
+           snip=FALSE)
+```
+
+
+```{r, message=FALSE}
+library(rpart)
+print("Modelo de Árvore de regressão com PCA  - treinamento")
+result<-testa.modelo(modelo=modelo_Valor_tree0, valores_observados=treinamento_comPCA$quality, tit_grafico = "Árvore de Regressão com PCA - treino", sumario=FALSE)
+print("Modelo de Árvore de regressão com PCA  - teste")
+result<-testa.modelo(modelo=modelo_Valor_tree0, dataset=teste_comPCA, valores_observados=teste_comPCA$quality, tit_grafico = "Árvore de Regressão com PCA - teste", sumario=FALSE)
+ 
+```
+
+
+
+
+```{r fig.width=22, fig.height=18,echo=FALSE, warning=FALSE}
+#Árvore de Regressão sem a aplicação de PCA
+modelo_Valor_tree1 <- rpart (quality ~ . , 
+                            data = treinamento_semPCA, 
+                            cp = 0.001,minsplit = 5,maxdepth=10)
+# Faz o Gráfico
+rpart.plot(modelo_Valor_tree1, type=4, extra=1, under=FALSE, clip.right.labs=TRUE,
+           fallen.leaves=FALSE,   digits=2, varlen=-10, faclen=20,
+           cex=0.4, tweak=1.7,
+           compress=TRUE,
+           snip=FALSE)
+```
+
+
+```{r}
+library(rpart)
+print("Modelo de Árvore de regressão com todos os atributos sem PCA - treinamento")
+result<-testa.modelo(modelo=modelo_Valor_tree1, valores_observados=treinamento_semPCA$quality, tit_grafico = "Árvore de Regressão completa - treino", sumario=FALSE)
+print("Modelo de Árvore de regressão com todos os atributos sem PCA - teste")
+result<-testa.modelo(modelo=modelo_Valor_tree1, dataset=teste_semPCA, valores_observados=teste_semPCA$quality, tit_grafico = "Árvore de Regressão completa - teste", sumario=FALSE)
+```
+
+
+#### Random Forest
+
+```{r}
+# Random Forest com a aplicação do PCA
+library(randomForest)
+modelo_random_forest0 <- randomForest(quality ~ . ,
+                                     data = treinamento_comPCA)
+```
+
+
+
+```{r}
+print("Modelo de Random Forest com PCA - treinamento")
+result<-testa.modelo_res(modelo=modelo_random_forest0, valores_observados=treinamento_comPCA$quality)
+print("Modelo de Random Forest com PCA - teste")
+result<-testa.modelo_res(modelo=modelo_random_forest0, dataset=teste_comPCA, valores_observados=teste_semPCA$quality)
+```
+
+
+
+
+```{r}
+# Random Forest sem a aplicação do PCA
+library(randomForest)
+modelo_random_forest1 <- randomForest(quality ~ . ,
+                                     data = treinamento_semPCA)
+```
+
+
+
+```{r}
+library(rpart)
+print("Modelo de Random Forest com todos os atributos sem PCA - treinamento")
+result<-testa.modelo_res(modelo=modelo_random_forest1, valores_observados=treinamento_semPCA$quality)
+print("Modelo de Random Forest com todos os atributos sem PCA - teste")
+result<-testa.modelo_res(modelo=modelo_random_forest1, dataset=teste_semPCA, valores_observados=teste_semPCA$quality)
+```
+
+#### Árvore de decisão
+
+```{r}
+# Árvore de Decisão (classificação) com a aplicação do PCA
+modelo_Valor_tree_class0 <- rpart (quality ~ . ,
+                            data = treinamento_comPCA,
+                            method = 'class')
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# Matriz de Confusão - Árvore de Decisão com a aplicação de PCA
+library(caret)
+print("Modelo de árvore de decisão com PCA - treinamento")
+# Dataset de treinamento
+confusionMatrix(predict(modelo_Valor_tree_class0, type = 'class'), factor(treinamento_comPCA$quality))
+
+print("Modelo de árvore de decisão com PCA - teste")
+# Dataset de teste
+confusionMatrix(predict(modelo_Valor_tree_class0, newdata = teste_comPCA, type = 'class'), factor(teste_comPCA$quality))
+```
+
+
+
+```{r}
+# Árvore de Decisão (classificação) sem a aplicação do PCA
+modelo_Valor_tree_class1 <- rpart (quality ~ . ,
+                            data = treinamento_semPCA,
+                            method = 'class')
+```
+
+
+```{r}
+# Matriz de Confusão - Árvore de Decisão sem a aplicação de PCA
+library(caret)
+# Dataset de treinamento
+
+print("Modelo de árvore de decisão sem PCA - treinamento")
+confusionMatrix(predict(modelo_Valor_tree_class1, type = 'class'), factor(treinamento_semPCA$quality))
+# Dataset de teste
+print("Modelo de árvore de decisão sem PCA - teste")
+confusionMatrix(predict(modelo_Valor_tree_class1, newdata = teste_semPCA, type = 'class'), factor(teste_semPCA$quality))
+```
+
+#### Regressão Logística
+
+```{r warning=FALSE, message=FALSE}
+
+library(MASS)
+
+# Regressão Logística com a aplicação de PCA
+modelo_logistica0 <- polr(factor(quality) ~ . ,
+                          data = treinamento_comPCA,
+                          Hess = TRUE)
+
+```
+
+
+
+
+```{r}
+# Matriz de Confusão - Regressão Logística Ordinal com a aplicação de PCA
+library(caret)
+# Dataset de treinamento
+print("Modelo de regressão logística com PCA - treinamento")
+confusionMatrix(predict(modelo_logistica0), factor(treinamento_comPCA$quality))
+# Dataset de teste
+print("Modelo de regressão logística com PCA - teste")
+confusionMatrix(predict(modelo_logistica0, newdata = teste_comPCA), factor(teste_comPCA$quality))
+
+```
+
+
+
+```{r}
+library(MASS)
+
+# Regressão Logística sem a aplicação de PCA
+modelo_logistica1 <- polr(factor(quality) ~ . ,
+                          data = treinamento_semPCA,
+                          Hess = TRUE)
+```
+
+
+```{r}
+# Matriz de Confusão - Regressão Logística Ordinal sem a aplicação de PCA
+library(caret)
+# Dataset de treinamento
+print("Modelo de regressão logística sem PCA - treinamento")
+confusionMatrix(predict(modelo_logistica1), factor(treinamento_semPCA$quality))
+# Dataset de teste
+print("Modelo de regressão logística sem PCA - teste")
+confusionMatrix(predict(modelo_logistica1, newdata = teste_semPCA), factor(teste_semPCA$quality))
+```
+
+
+
+
+
+<br><br>
+
+
+# Datasets
+
+<br>
+Com a utilização do PCA, surgem 2 datasets a serem submetidos aos algoritmos de predição ou classificação. 
+
+<b>Primeiro dataset:</b> chamado de "Com PCA"
+
+* Dataset com os vinhos brancos sem os outliers e com a aplicação dos três primeiros componentes do PCA e extração dos atributos que foram utilizados para o cálculo dos auto-vetores:  
+(totalsulfurdioxide,freesulfurdioxide, density,residualsugar,alcohol), obtem-se o dataset a seguir:
+
+  <b>Variáveis independentes:</b>
+  
+  * fixedacidity
+  * volatileacidity
+  * citricacid
+  * chlorides
+  * pH
+  * sulphates
+  * pca1
+  * pca2
+  * pca3
+  
+  <b>Variável dependente:</b>
+  
+  * quality
+  
+<b>Segundo dataset:</b> chamado de "Sem PCA"
+
+* Modelo completo do dataset de vinhos brancos sem os outliers e com os atributos numéricos
+
+  <b>Variáveis independentes:</b>
+  
+  * fixedacidity
+  * volatileacidity
+  * citricacid
+  * chlorides
+  * pH
+  * sulphates
+  * totalsulfurdioxide
+  * freesulfurdioxide
+  * density
+  * residualsugar
+  * alcohol
+  
+  <b>Variável dependente:</b>
+  
+  * quality
+
+
+<br><br>
+
+# Técnicas utilizadas 
+
+<br>
+As técnicas de predição e classificação foram aplicadas tanto no primeiro como no segundo dataset. 
+
+Para métrica de qualidade dos modelos, foi utilizado o RMSE para os modelos preditivos e a acurácia da matriz de confusão para os de classificação. 
+
+Os datasets foram divididos em amostras de treinamento e teste na proporção 70% e 30%, respectivamente.  
+
+Os indicadores de qualidade considerados foram aqueles obtidos na amostra de teste.
+
+
+* <b>Regressão Linear</b> encontra o hiperplano com as variáveis independentes que possua a menor distância em relação a variável dependente
+  * No caso em questão, procurou-se a melhor combinação de variáveis independentes para comporem o hiperplano através dos métodos de busca forward, backward e both, aplicou-se ao dataset Sem PCA e os resultados não foram melhores que os obtidos com os datasets originais. Na estratégia de backward, obteve-se um RMSE de 0.7470
+  * O melhor modelo ocorreu com o dataset sem PCA com RMSE de 0.7472
+  * No modelo com PCA, obteve-se o RMSE de 0.7529
+  * Os resíduos se distribuem aleatoriamente no gráfico de dispersão.
+  
+*   <b>Árvore de Regressão</b> encontra uma sequência de regras comparativas envolvendo as variáveis independentes, representada como uma árvore, e ao chegar à folha dessa estrutura, realiza uma regressão linear para estimar o valor da variável dependente
+   * Com esse método, obteve-se o RMSE de 0.8302 no dataset sem PCA
+   * o gráfico de dispersão mostra os resíduos distribuídos aleatoriamente 
+
+
+* <b>Random Forest</b> estratégia de Bagging que gera várias árvores de regressão e utiliza a árvore com os melhores resultados para realizar a predição.
+   * Com esse método, obteve-se o RMSE de 0.7058 no dataset sem PCA
+   
+* <b>Árvore de Decisão</b> é semelhante a árvore de regressão, no entanto, cada folha deve conduzir a um único valor para a variável discreta dependente.
+   * Com esse método, obteve-se uma acurácia 0.5295 no dataset sem PCA
+   
+* <b>Regressão Logística Ordinal</b> é uma variação da regressão logística que permite que a variável dependente seja discreta com multivalorada
+   * Com esse método, obteve-se uma acurácia 0.5212 no dataset com PCA
+
+<br><br>
+
+# Análise dos modelos
+
+<br>
+O melhor modelo preditivo foi o Random Forest aplicado no dataset sem PCA que apresentou um RMSE de 0.7058 e o melhor modelo de classificação foi a árvore de decisão aplicado no dataset sem PCA que apresenta uma acurácia de 0.5295. 
+
+Percebe-se que a qualidade dos modelos não é satisfatória, uma vez que o método bem óbvio e ruim, que seria sempre predizer a qualidade média da amostra de vinhos brancos apresenta um RMSE de 0.8681 e o melhor modelo preditivo apresenta RMSE de 0.7058. 
+
+E para o modelo de classificação, a melhor acurácia é de 52,95%, portanto muito próximo dos 50%, que é o equivalente a se jogar uma moeda para se determinar se o valor é confiável ou não. Para modelos de classificação, normalmente espera-se uma acurácia superior a 80%. 
+
+Outro aspecto digno de nota é o fato da utilização do PCA ser eficiente, pois os resultados de acurácia e RMSE apresentam-se muito próximos tanto nos modelos aplicados nos datasets com PCA e sem PCA.
+
+No entanto, com exceção da Regressão Logística Ordinal, em todas as outras técnicas, o dataset sem a aplicação do PCA gerou um modelo de qualidade ligeiramente superior. Isto indica que apesar de poder gerar um modelo que potencialmente exige um menor poder computacional para as predições e classificações, cobra-se uma perda na qualidade quando se aplica o PCA. 
+
+<br><br>
+
+# Recomendações sobre a aprendizagem supervisionada
+
+<br>
+Há algumas hipóteses e recomendações para solucionar o problema: 
+
+* As variáveis independentes não são suficientes para explicar a variável dependente quality, deste modo, deve-se enriquecer o modelo a fim de melhorar os indicadores de desempenhos dos mesmos
+
+* Utilizar alguma técnica de ensembles, com as estratégias de Bagging (além da Random Forest) ou Boosting
+
+* Treinar modelos especializados em identificar cada qualidade ou agrupamento de qualidades de vinhos brancos
+
+* A quantidade de amostras de vinhos brancos de todas as qualidades não são suficientes para os modelos utilizados. Deste modo, deve-se arrumar um número maior de amostras de algumas qualidades de vinhos.
+
+<br><br>
+
+
+
+
+
+
+# Algoritmo não supervisionado
+
+A seguir será analisado o uso de k-means para agrupamento dos dados.
+Inicialmente será verificao a quantidade ideal de clusters para agrupar os dados considerando até 10 clusters
+
+```{r, echo=FALSE}
+
+treinamento_semPCA[ ,-12] -> NS_treinamento_semPCA
+treinamento_comPCA[ ,-9] -> NS_treinamento_comPCA
+
+
+wss <- (nrow(NS_treinamento_semPCA)-1)*sum(apply(NS_treinamento_semPCA,2,var))
+for (i in 2:10) 
+  wss[i] <- sum(kmeans(NS_treinamento_semPCA, centers=i)$withinss)
+
+plot(1:10, wss, type="b", xlab="Numero de Clusters", ylab="Soma dos quadrados da distancia dentro do grupo")
+
+```
+
+Pelo gráfico acima, nota-se que 3 é a quantidade ideal de clusters já que a partir desse número a distancia entre os dados e o cluster não sofre variação considerável.
+
+
+k-means com todos os atributos
+
+
+```{r warning=FALSE, message=FALSE, echo=FALSE, fig.width=16, fig.height=18}
+# fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, totalsulfurdioxide,
+# freesulfurdioxide, density, residualsugar, alcohol
+
+modelo.kmeans <- kmeans(NS_treinamento_semPCA, centers = 3)
+
+attach(NS_treinamento_semPCA)
+plot(NS_treinamento_semPCA, col = modelo.kmeans$cluster, cex = 2)
+points(modelo.kmeans$centers, col = 1:3, pch =3, cex = 3, lwd = 2)
+
+```
+
+Percebe-se que há uma boa distinção dos grupos entre o totalsulfurdioxide e todos os outros atributos. No entanto para as outras variáveis os grupos ficam dispersos quase se sobrepondo.
+
+Abaixo um gráfico entre totalsulfurdioxide e o residualsugar com os 3 grupos
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+# fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, totalsulfurdioxide,
+# freesulfurdioxide, density, residualsugar, alcohol
+
+modelo.kmeans <- kmeans(NS_treinamento_semPCA, centers = 3)
+
+attach(NS_treinamento_semPCA)
+plot(totalsulfurdioxide, residualsugar, col = modelo.kmeans$cluster, cex = 2)
+points(modelo.kmeans$centers, col = 1:3, pch =3, cex = 3, lwd = 2)
+
+```
+
+
+Em seguida um gráfico entre ph e volatileacidity com os 3 grupos
+
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+# fixedacidity, volatileacidity, citricacid, chlorides, pH, sulphates, totalsulfurdioxide,
+# freesulfurdioxide, density, residualsugar, alcohol
+
+modelo.kmeans <- kmeans(NS_treinamento_semPCA, centers = 3)
+
+attach(NS_treinamento_semPCA)
+plot(pH, volatileacidity, col = modelo.kmeans$cluster, cex = 2)
+points(modelo.kmeans$centers, col = 1:3, pch =3, cex = 3, lwd = 2)
+```
+
+Desse modo, o uso de k-means não é recomendável.
